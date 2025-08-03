@@ -1,0 +1,14 @@
+# Core dependencies
+streamlit>=1.28.0
+pandas>=1.5.0
+numpy>=1.24.0
+yfinance>=0.2.18
+
+# Plotting and visualization
+plotly>=5.15.0
+
+# Optional: For better performance
+pyarrow>=12.0.0
+
+# Optional: For development
+jupyter>=1.0.0

@@ -1,0 +1,17 @@
+{
+  "total_capital": 100100.0,
+  "deployed_amount": 0,
+  "available_amount": 100100.0,
+  "trades_history": [
+    {
+      "type": "capital_addition",
+      "amount": 100.0,
+      "timestamp": "2025-08-03T16:30:25.099187",
+      "total_capital_after": 100100.0,
+      "available_amount_after": 100100.0
+    }
+  ],
+  "active_trades": {},
+  "last_updated": "2025-08-03T16:30:25.099196",
+  "capital_utilization_pct": 0.0
+}
