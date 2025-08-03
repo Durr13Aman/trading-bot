@@ -276,32 +276,52 @@ if page == "Trading Analysis":
             with col_length:
                 length = st.selectbox(
                     "Length",
-                    options=["1 Day", "1 Month"],
-                    index=1  # Default to 1 Month
+                    options=["1 Day", "1 Week", "1 Month", "1 Year"],
+                    index=2  # Default to 1 Month
                 )
             
             with col_candle:
+                # Dynamic candle options based on timeframe
+                if length == "1 Day":
+                    candle_options = ["15 Minutes", "1 Hour"]
+                    default_candle = "1 Hour"
+                elif length == "1 Week":
+                    candle_options = ["1 Hour", "Daily"]
+                    default_candle = "Daily"
+                elif length == "1 Month":
+                    candle_options = ["1 Hour", "Daily"]
+                    default_candle = "Daily"
+                elif length == "1 Year":
+                    candle_options = ["Daily", "Weekly"]
+                    default_candle = "Weekly"
+                
                 candle = st.selectbox(
                     "Candle",
-                    options=["15 Minutes", "1 Hour", "Daily"],
-                    index=1  # Default to 1 Hour
+                    options=candle_options,
+                    index=candle_options.index(default_candle) if default_candle in candle_options else 0
                 )
             
-            # Validation: Daily candles only work with 1 Month length
-            if candle == "Daily" and length == "1 Day":
-                st.warning("Daily candles require 1 Month length. Switching to 1 Hour candles.")
+            # Validation and smart defaults
+            if length == "1 Day" and candle not in ["15 Minutes", "1 Hour"]:
+                st.warning("1 Day length works best with 15 Minutes or 1 Hour candles. Switching to 1 Hour.")
                 candle = "1 Hour"
+            elif length == "1 Year" and candle not in ["Daily", "Weekly"]:
+                st.warning("1 Year length works best with Daily or Weekly candles. Switching to Weekly.")
+                candle = "Weekly"
             
             # Map to API parameters
             length_map = {
                 "1 Day": "1d",
-                "1 Month": "1mo"
+                "1 Week": "1wk", 
+                "1 Month": "1mo",
+                "1 Year": "1y"
             }
             
             candle_map = {
                 "15 Minutes": "15m",
                 "1 Hour": "1h", 
-                "Daily": "1d"
+                "Daily": "1d",
+                "Weekly": "1wk"
             }
             
             # Show current selection
@@ -353,32 +373,34 @@ if page == "Trading Analysis":
                         row=1, col=1
                     )
                     
-                    # Add support/resistance levels
+                    # Add support/resistance levels - Show 2 support and 2 resistance
                     engine_status = st.session_state.engine.get_status()
                     if selected_symbol in engine_status['support_resistance_levels']:
                         levels = engine_status['support_resistance_levels'][selected_symbol]
                         
-                        # Support levels (green dashed lines)
-                        for i, support in enumerate(levels.get('support', [])[-3:]):
+                        # Support levels (green dashed lines) - Maximum 2
+                        support_levels = levels.get('support', [])
+                        for i, support in enumerate(support_levels[:2]):  # Show up to 2 support levels
                             fig.add_hline(
                                 y=support, 
                                 line_dash="dash", 
                                 line_color="green",
-                                line_width=1,
-                                annotation_text=f"Support: ₹{support:.2f}",
-                                annotation_position="bottom right" if i % 2 == 0 else "top right",
+                                line_width=2,
+                                annotation_text=f"Support: ₹{support:.1f}",
+                                annotation_position="bottom right" if i == 0 else "top right",
                                 row=1, col=1
                             )
                         
-                        # Resistance levels (red dashed lines)
-                        for i, resistance in enumerate(levels.get('resistance', [])[:3]):
+                        # Resistance levels (red dashed lines) - Maximum 2  
+                        resistance_levels = levels.get('resistance', [])
+                        for i, resistance in enumerate(resistance_levels[:2]):  # Show up to 2 resistance levels
                             fig.add_hline(
                                 y=resistance, 
                                 line_dash="dash", 
                                 line_color="red",
-                                line_width=1,
-                                annotation_text=f"Resistance: ₹{resistance:.2f}",
-                                annotation_position="top left" if i % 2 == 0 else "bottom left",
+                                line_width=2,
+                                annotation_text=f"Resistance: ₹{resistance:.1f}",
+                                annotation_position="top left" if i == 0 else "bottom left",
                                 row=1, col=1
                             )
                     
@@ -432,12 +454,24 @@ if page == "Trading Analysis":
                             day_low = chart_data['Low'].min()
                             st.metric("Day High", f"₹{day_high:.2f}")
                             st.metric("Day Low", f"₹{day_low:.2f}")
-                        else:  # 1 Month
+                        elif length == "1 Week":
+                            # Show week's high/low
+                            week_high = chart_data['High'].max()
+                            week_low = chart_data['Low'].min()
+                            st.metric("Week High", f"₹{week_high:.2f}")
+                            st.metric("Week Low", f"₹{week_low:.2f}")
+                        elif length == "1 Month":
                             # Show month's high/low
                             month_high = chart_data['High'].max()
                             month_low = chart_data['Low'].min()
                             st.metric("Month High", f"₹{month_high:.2f}")
                             st.metric("Month Low", f"₹{month_low:.2f}")
+                        else:  # 1 Year
+                            # Show year's high/low
+                            year_high = chart_data['High'].max()
+                            year_low = chart_data['Low'].min()
+                            st.metric("Year High", f"₹{year_high:.2f}")
+                            st.metric("Year Low", f"₹{year_low:.2f}")
                     
                     with col_info3:
                         # Closest Support

@@ -7,6 +7,9 @@ import logging
 import json
 import os
 from typing import List, Dict, Tuple, Optional
+from sklearn.cluster import KMeans
+from scipy.signal import argrelextrema
+import heapq
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
