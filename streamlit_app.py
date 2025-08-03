@@ -67,6 +67,33 @@ if 'engine' not in st.session_state:
 if 'portfolio' not in st.session_state:
     st.session_state.portfolio = PortfolioManager()
 
+# Initialize support/resistance data for all symbols at startup
+if 'support_resistance_initialized' not in st.session_state:
+    st.session_state.support_resistance_initialized = False
+
+# Auto-calculate support/resistance for all symbols on startup
+if not st.session_state.support_resistance_initialized:
+    current_symbols = st.session_state.engine.get_symbols()
+    if current_symbols:
+        with st.spinner("Initializing support/resistance data for all symbols..."):
+            for symbol in current_symbols:
+                try:
+                    # Fetch 1 year data for support/resistance calculation
+                    data = st.session_state.engine.get_symbol_data(symbol, period='1y', interval='1h')
+                    if data is not None and not data.empty:
+                        # Calculate support/resistance levels
+                        support_levels, resistance_levels = st.session_state.engine.detect_support_resistance(data)
+                        st.session_state.engine.support_resistance_levels[symbol] = {
+                            'support': support_levels,
+                            'resistance': resistance_levels,
+                            'current_price': data['Close'].iloc[-1],
+                            'timestamp': data.index[-1]
+                        }
+                except Exception as e:
+                    st.error(f"Error initializing data for {symbol}: {e}")
+    
+    st.session_state.support_resistance_initialized = True
+
 # Sidebar navigation
 st.sidebar.title("Trading Dashboard")
 page = st.sidebar.selectbox("Select Page", ["Trading Analysis", "Portfolio Manager"])
@@ -91,6 +118,21 @@ if page == "Trading Analysis":
                 st.sidebar.success(f"✅ Added {new_symbol.upper()}")
                 # Force refresh of symbols list
                 st.session_state.engine.symbols = st.session_state.engine.load_symbols()
+                
+                # Calculate support/resistance for new symbol
+                try:
+                    data = st.session_state.engine.get_symbol_data(new_symbol.upper(), period='1y', interval='1h')
+                    if data is not None and not data.empty:
+                        support_levels, resistance_levels = st.session_state.engine.detect_support_resistance(data)
+                        st.session_state.engine.support_resistance_levels[new_symbol.upper()] = {
+                            'support': support_levels,
+                            'resistance': resistance_levels,
+                            'current_price': data['Close'].iloc[-1],
+                            'timestamp': data.index[-1]
+                        }
+                except Exception as e:
+                    st.sidebar.warning(f"Could not calculate levels for {new_symbol.upper()}")
+                
                 time.sleep(0.1)  # Small delay to ensure file is written
                 st.rerun()
             else:
@@ -274,6 +316,19 @@ if page == "Trading Analysis":
                 )
                 
                 if chart_data is not None and not chart_data.empty:
+                    # IMPORTANT: Calculate support/resistance for this symbol if not already done
+                    engine_status = st.session_state.engine.get_status()
+                    if selected_symbol not in engine_status.get('support_resistance_levels', {}):
+                        # Calculate support/resistance levels for chart display
+                        support_levels, resistance_levels = st.session_state.engine.detect_support_resistance(chart_data)
+                        st.session_state.engine.support_resistance_levels[selected_symbol] = {
+                            'support': support_levels,
+                            'resistance': resistance_levels,
+                            'current_price': chart_data['Close'].iloc[-1],
+                            'timestamp': chart_data.index[-1]
+                        }
+                        # Update engine status
+                        engine_status = st.session_state.engine.get_status()
                     # Create main chart
                     fig = make_subplots(
                         rows=2, cols=1,
@@ -356,7 +411,10 @@ if page == "Trading Analysis":
                     
                     st.plotly_chart(fig, use_container_width=True)
                     
-                    # Symbol info below chart - adapt to timeframe
+                    # Price Action Info - Add this section
+                    st.markdown("### Price Action Analysis")
+                    
+                    # Symbol info with price action details
                     col_info1, col_info2, col_info3, col_info4 = st.columns(4)
                     
                     current_price = chart_data['Close'].iloc[-1]
@@ -382,31 +440,74 @@ if page == "Trading Analysis":
                             st.metric("Month Low", f"₹{month_low:.2f}")
                     
                     with col_info3:
+                        # Closest Support
                         engine_status = st.session_state.engine.get_status()
                         if selected_symbol in engine_status['support_resistance_levels']:
                             levels = engine_status['support_resistance_levels'][selected_symbol]
                             support_levels = levels.get('support', [])
                             if support_levels:
-                                nearest_support = max([s for s in support_levels if s <= current_price], default=0)
-                                if nearest_support:
-                                    st.metric("Nearest Support", f"₹{nearest_support:.2f}")
+                                # Find closest support below current price
+                                valid_supports = [s for s in support_levels if s <= current_price]
+                                if valid_supports:
+                                    closest_support = max(valid_supports)
+                                    st.metric("Closest Support", f"₹{closest_support:.2f}")
                                 else:
-                                    st.metric("Nearest Support", "None")
+                                    st.metric("Closest Support", "None Below")
                             else:
-                                st.metric("Nearest Support", "None")
+                                st.metric("Closest Support", "Not Found")
+                        else:
+                            st.metric("Closest Support", "No Data")
                     
                     with col_info4:
+                        # Closest Resistance
                         if selected_symbol in engine_status['support_resistance_levels']:
                             levels = engine_status['support_resistance_levels'][selected_symbol]
                             resistance_levels = levels.get('resistance', [])
                             if resistance_levels:
-                                nearest_resistance = min([r for r in resistance_levels if r >= current_price], default=0)
-                                if nearest_resistance:
-                                    st.metric("Nearest Resistance", f"₹{nearest_resistance:.2f}")
+                                # Find closest resistance above current price
+                                valid_resistances = [r for r in resistance_levels if r >= current_price]
+                                if valid_resistances:
+                                    closest_resistance = min(valid_resistances)
+                                    st.metric("Closest Resistance", f"₹{closest_resistance:.2f}")
                                 else:
-                                    st.metric("Nearest Resistance", "None")
+                                    st.metric("Closest Resistance", "None Above")
                             else:
-                                st.metric("Nearest Resistance", "None")
+                                st.metric("Closest Resistance", "Not Found")
+                        else:
+                            st.metric("Closest Resistance", "No Data")
+                    
+                    # Additional Price Action Summary
+                    if selected_symbol in engine_status.get('support_resistance_levels', {}):
+                        levels = engine_status['support_resistance_levels'][selected_symbol]
+                        support_levels = levels.get('support', [])
+                        resistance_levels = levels.get('resistance', [])
+                        
+                        # Create summary box
+                        col_summary1, col_summary2 = st.columns(2)
+                        
+                        with col_summary1:
+                            if support_levels:
+                                valid_supports = [s for s in support_levels if s <= current_price]
+                                if valid_supports:
+                                    closest_support = max(valid_supports)
+                                    distance = ((current_price - closest_support) / closest_support) * 100
+                                    st.info(f"**Support Analysis:** Price is {distance:.2f}% above nearest support at ₹{closest_support:.2f}")
+                                else:
+                                    st.warning("**Support Analysis:** No support levels below current price")
+                            else:
+                                st.warning("**Support Analysis:** No support levels identified")
+                        
+                        with col_summary2:
+                            if resistance_levels:
+                                valid_resistances = [r for r in resistance_levels if r >= current_price]
+                                if valid_resistances:
+                                    closest_resistance = min(valid_resistances)
+                                    distance = ((closest_resistance - current_price) / current_price) * 100
+                                    st.info(f"**Resistance Analysis:** Next resistance at ₹{closest_resistance:.2f} (+{distance:.2f}%)")
+                                else:
+                                    st.warning("**Resistance Analysis:** No resistance levels above current price")
+                            else:
+                                st.warning("**Resistance Analysis:** No resistance levels identified")
                     
                     # Chart info summary
                     st.info(f"📊 Showing {length} data with {candle} candles | Data points: {len(chart_data)}")
